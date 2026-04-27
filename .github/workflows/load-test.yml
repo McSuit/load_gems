@@ -1,0 +1,75 @@
+name: Load Test & Publish Pages
+
+on:
+  workflow_dispatch: {}
+
+env:
+  SCENARIO_CONF: "scenarios/baseline/workflow.conf"
+  SCENARIO_NAME: "v1.0"
+  LOCUST_REPORT_DIR: "reports"
+
+jobs:
+  load_test:
+    name: Load Test
+    runs-on: ubuntu-latest
+    container:
+      image: python:3.12-slim
+    outputs:
+      report_name: ${{ steps.meta.outputs.report_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        # Добавили faker, чтобы не было ModuleNotFoundError
+        run: pip install --quiet locust pydantic-settings faker
+
+      - name: Run Locust
+        id: meta
+        env:
+          AUTH_TOKEN: ${{ secrets.AUTH_TOKEN }}
+          BASE_URL: ${{ secrets.BASE_URL }}
+        run: |
+          TIMESTAMP=$(date -u +"%Y-%m-%d_%H-%M-%S")
+          REPORT_NAME="${SCENARIO_NAME}_${TIMESTAMP}.html"
+          mkdir -p ${LOCUST_REPORT_DIR}
+          # Убран флаг --headless (берется из конфига)
+          locust --config ${SCENARIO_CONF} --html ${LOCUST_REPORT_DIR}/${REPORT_NAME}
+          echo "report_name=${REPORT_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: locust-report
+          path: ${{ env.LOCUST_REPORT_DIR }}/
+
+  pages:
+    name: Publish Pages
+    needs: load_test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download report artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: locust-report
+          path: ${{ env.LOCUST_REPORT_DIR }}
+
+      - name: Create Index Redirect
+        env:
+          REPORT_NAME: ${{ needs.load_test.outputs.report_name }}
+        run: |
+          # Копируем последний отчет в index.html, чтобы он открывался по умолчанию
+          cp "${{ env.LOCUST_REPORT_DIR }}/${REPORT_NAME}" "${{ env.LOCUST_REPORT_DIR }}/index.html"
+
+      - name: Deploy HTML report to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          keep_files: true
+          publish_dir: ./${{ env.LOCUST_REPORT_DIR }}
+          publish_branch: gh-pages
