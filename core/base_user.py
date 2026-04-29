@@ -1,6 +1,6 @@
 """Базовый Locust-пользователь, общий для всех сценариев."""
 from locust import HttpUser, between
-from common.settings import settings
+from core.settings import settings
 
 
 class BaseUser(HttpUser):
