@@ -6,6 +6,7 @@
 
 ```
 clients/                      # HTTP-клиенты по доменам
+  base_client.py              #   Базовый клиент с Pydantic-валидацией
   guests/                     #   — гости
   loyalty/                    #   — программа лояльности
   discount_reasons/           #   — причины скидок
